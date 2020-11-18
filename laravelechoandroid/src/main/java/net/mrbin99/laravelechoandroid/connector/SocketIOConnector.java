@@ -4,8 +4,12 @@
  */
 package net.mrbin99.laravelechoandroid.connector;
 
+import android.os.Build;
+
 import io.socket.client.IO;
 import io.socket.client.Socket;
+import okhttp3.OkHttpClient;
+
 import net.mrbin99.laravelechoandroid.EchoCallback;
 import net.mrbin99.laravelechoandroid.EchoException;
 import net.mrbin99.laravelechoandroid.EchoOptions;
@@ -15,8 +19,18 @@ import net.mrbin99.laravelechoandroid.channel.SocketIOPresenceChannel;
 import net.mrbin99.laravelechoandroid.channel.SocketIOPrivateChannel;
 
 import java.net.URISyntaxException;
+import java.security.KeyManagementException;
+import java.security.NoSuchAlgorithmException;
+import java.security.cert.CertificateException;
+import java.security.cert.X509Certificate;
 import java.util.HashMap;
 import java.util.Map;
+
+import javax.net.ssl.HostnameVerifier;
+import javax.net.ssl.SSLContext;
+import javax.net.ssl.SSLSession;
+import javax.net.ssl.TrustManager;
+import javax.net.ssl.X509TrustManager;
 
 /**
  * This class creates a connector to a Socket.io server.
@@ -47,7 +61,48 @@ public class SocketIOConnector extends AbstractConnector {
     @Override
     public void connect(EchoCallback success, EchoCallback error) {
         try {
-            socket = IO.socket(this.options.host);
+            //Fix for Android 6.x
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+                HostnameVerifier myHostnameVerifier = new HostnameVerifier() {
+                    @Override
+                    public boolean verify(String hostname, SSLSession session) {
+                        return true;
+                    }
+                };
+                TrustManager[] trustAllCerts = new TrustManager[]{new X509TrustManager() {
+                    public void checkClientTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+
+                    public void checkServerTrusted(X509Certificate[] chain, String authType) throws CertificateException {
+                    }
+
+                    public X509Certificate[] getAcceptedIssuers() {
+                        return new X509Certificate[0];
+                    }
+                }};
+                SSLContext mySSLContext = null;
+                try {
+                    mySSLContext = SSLContext.getInstance("TLS");
+                    try {
+                        mySSLContext.init(null, trustAllCerts, null);
+                    } catch (KeyManagementException e) {
+                        e.printStackTrace();
+                    }
+                } catch (NoSuchAlgorithmException e) {
+                    e.printStackTrace();
+                }
+                OkHttpClient okHttpClient = new OkHttpClient.Builder().hostnameVerifier(myHostnameVerifier).sslSocketFactory(mySSLContext.getSocketFactory()).build();
+                IO.setDefaultOkHttpWebSocketFactory(okHttpClient);
+                IO.setDefaultOkHttpCallFactory(okHttpClient);
+
+                IO.Options opts = new IO.Options();
+                opts.callFactory = okHttpClient;
+                opts.webSocketFactory = okHttpClient;
+
+                socket = IO.socket(this.options.host, opts);
+            } else {
+                socket = IO.socket(this.options.host);
+            }
             socket.connect();
 
             if (success != null) {

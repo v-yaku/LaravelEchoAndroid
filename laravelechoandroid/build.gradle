@@ -19,6 +19,8 @@ dependencies {
     compile("io.socket:socket.io-client:$socketio_version") {
         exclude group: 'org.json', module: 'json'
     }
+
+    implementation("com.squareup.okhttp3:okhttp:$okhttp_version")
 }
 
 task sourcesJar(type: Jar) {
